@@ -1,0 +1,561 @@
+---
+title: "STAT462_ASSIGNMENT 3"
+author: 'By Lin Huang Student ID 23074062 '
+date: "2023-05-25"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+#Load the required packages
+library(rpart)       # For fitting regression tree
+library(tree) 
+library(randomForest) # For random forest
+library(gbm)         # For gradient boosting
+library(arules)
+library(MASS)
+library(ggplot2)
+library(cluster)
+library(kernlab)
+library(e1071)
+```
+
+## Question 1.
+### (a) 
+```{r Fit a regression tree to the training set, Plot the tree and interpret the results, find the test and training MSEs}
+set.seed(1)
+# Read the training and testing data
+carseatsTrain <- read.csv("carseatsTrain.csv")
+carseatsTest <- read.csv("carseatsTest.csv")
+
+carseatsTrain$Urban <- ifelse(carseatsTrain$Urban == "No", 0, 1)
+carseatsTrain$US <- ifelse(carseatsTrain$US == "No", 0, 1)
+
+carseatsTest$Urban <- ifelse(carseatsTest$Urban == "No", 0, 1)
+carseatsTest$US <- ifelse(carseatsTest$US == "No", 0, 1)
+
+#Fit a regression tree
+tree.carseats <- tree(Sales ~ ., data = carseatsTrain)
+
+#Interpret the results: The unpruned tree that results from top-down greedy splitting on the training data is shown. This resulting tree might be too complex.
+summary(tree.carseats)
+
+#Notice that the output of summary() indicates that only 6 of the variables have been used in constructing the tree. In the context of a regression tree, the deviance is simply the sum of squared errors for the tree. We now plot the tree.
+plot(tree.carseats)
+text(tree.carseats, pretty = 0)
+```
+The variable Price measures Price company charges for car seats at each site. The variable  CompPrice measures price charged by competitor at each location. The variable  Income measures community income level in 1000s of dollars. The variable  Advertising measures local ad budget at each location in 1000s of dollars.For example, the tree predicts a sales of $6,742 at each location for car seats in which price >=137.5. 
+
+```{r Calculate the training and test MSEs}
+# Predict on training set
+train.pred <- predict(tree.carseats, newdata = carseatsTrain)
+train.mse <- mean((train.pred - carseatsTrain$Sales)^2)
+cat("Unpruned Tree Training MSE is:", train.mse, "\n")
+
+# Predict on test set
+test.pred <- predict(tree.carseats, newdata = carseatsTest)
+test.mse <- mean((test.pred - carseatsTest$Sales)^2)
+cat("Unpruned Tree Test MSE is:", test.mse, "\n")
+```
+
+### (b) 
+```{r Use the cv.tree() R function to prune the tree}
+# Prune the tree
+set.seed(1)
+cv.carseats <- cv.tree(tree.carseats)
+names(cv.carseats)
+par(mfrow = c(1, 1))
+plot(cv.carseats$size, cv.carseats$dev, type = "b")
+plot(cv.carseats$k, cv.carseats$dev, type = "b")
+
+par(mfrow = c(1,1))
+#It seems that the 17th is the best
+prune.car <- prune.tree(tree.carseats, best = 17)
+plot(prune.car)
+text(prune.car, pretty = 0)
+
+#Estimate the error of the tree
+predict.prune.train <- predict(prune.car, newdata = carseatsTrain)
+prune.mse.train<-mean((predict.prune.train - carseatsTrain$Sales)^2)
+cat("Pruned Tree Training MSE is:", prune.mse.train, "\n")
+
+predict.prune.test <- predict(prune.car, newdata = carseatsTest)
+testprune.mse.test<-mean((predict.prune.test - carseatsTest$Sales)^2)
+cat("Pruned Tree Test MSE is:", testprune.mse.test, "\n")
+```
+Unpruned Tree Training MSE is: 3.043394 
+Unpruned Tree Test MSE is: 6.03393
+
+Pruned Tree Training MSE is: 3.59378 
+Pruned Tree Test MSE is: 5.660688
+
+The pruned tree's performance is better than the unpruned tree on the test set, as indicated by the lower test MSE of the pruned tree. The unpruned tree has a test MSE of 6.03393, while the pruned tree has a test MSE of 5.660688. However, the pruned tree's performance is slightly worse than the unpruned tree on the training set, as indicated by the higher training MSE of the pruned tree. The unpruned tree has a training MSE of 3.043394, while the pruned tree has a training MSE of 3.59378.
+
+This is a common trade-off in machine learning between bias and variance. Pruning reduces the variance of the model, which can lead to better generalization performance on new data, but it may increase the bias of the model, which can lead to worse performance on the training data.
+
+In this case, the pruned tree has a slightly higher bias but a lower variance than the unpruned tree, which results in better performance on the test set.
+
+### (c) 
+```{r Fit a bagged regression and a random forest tree to the training set}
+set.seed(1)
+bag.carseats <- randomForest(Sales ~ ., data = carseatsTrain, mtry = 9,importance = TRUE)
+bag.carseats
+```
+```{r The test and training MSEs for each model}
+#How well does this bagged model perform on the test set
+train.predict.bag <- predict(bag.carseats, newdata = carseatsTrain)
+train.bag.mse<-mean((train.predict.bag - carseatsTrain$Sales)^2)
+cat("Training MSE for bagged is:", train.bag.mse, "\n")
+
+test.predict.bag <- predict(bag.carseats, newdata = carseatsTest)
+test.bag.mse<-mean((test.predict.bag - carseatsTest$Sales)^2)
+cat("Test MSE for bagged is:", test.bag.mse, "\n")
+```
+
+The Bagged tree's performance is better than both the unpruned and pruned trees on both the training and test sets, as indicated by the lower MSE values. The Bagged tree has a significantly lower training MSE of 0.8493527 compared to the unpruned tree's training MSE of 3.043394 and the pruned tree's training MSE of 3.59378. This indicates that the Bagged model is better at fitting the training data than both the unpruned and pruned trees. Similarly, the Bagged tree has a lower test MSE of 4.380588 compared to the unpruned tree's test MSE of 6.03393 and the pruned tree's test MSE of 5.660688. This indicates that the Bagged model is better at making predictions on new, unseen data than both the unpruned and pruned trees.
+
+Bagging (Bootstrap Aggregating) is an ensemble method that combines multiple models to reduce variance and improve performance. In Bagging, multiple models are trained on different subsets of the training data using a bootstrap sampling technique, and the final prediction is obtained by averaging the predictions of all the models. This helps to reduce overfitting and improve the model's ability to generalize to new data. In this case, the Bagged model has significantly lower variance than both the unpruned and pruned trees, which results in better performance on the test set. 
+
+```{r Change the number of trees grown by randomForest()}
+#Change the ntree argument
+#set.seed(1)
+#bag.carseats.ntree4 <- randomForest(Sales ~ ., data = carseatsTrain, mtry = 9, ntree=4)
+
+#train.predict.bag.ntree4 <- predict(bag.carseats.ntree4, newdata = carseatsTrain)
+#train.bag.mse.ntree4<-mean((train.predict.bag.ntree4 - carseatsTrain$Sales)^2)
+#cat("RandomForest ntree=4 Training MSE is:", train.bag.mse.ntree4, "\n")
+
+#test.predict.bag.ntree4 <- predict(bag.carseats.ntree4, newdata = carseatsTest)
+#test.bag.mse.ntree4<-mean((test.predict.bag.ntree4 - carseatsTest$Sales)^2)
+#cat("RandomForest ntree=4 Test MSE is:", test.bag.mse.ntree4, "\n")
+
+
+#Use mtry = 3 (By default,randomForest() uses p/3 variables when building a random forest of regression trees, and √p variables when building a random forest of classification trees.)
+set.seed(1)
+bag.carseats.mtry3 <- randomForest(Sales ~ ., data = carseatsTrain, mtry = 3,importance = TRUE)
+
+train.predict.bag.mtry3 <- predict(bag.carseats.mtry3, newdata = carseatsTrain)
+train.bag.mse.mtry3<-mean((train.predict.bag.mtry3 - carseatsTrain$Sales)^2)
+cat("RandomForest mtry = 3 Training MSE is:", train.bag.mse.mtry3, "\n")
+
+test.predict.bag.mtry3 <- predict(bag.carseats.mtry3, newdata = carseatsTest)
+test.bag.mse.mtry3<-mean((test.predict.bag.mtry3 - carseatsTest$Sales)^2)
+cat("RandomForest  mtry = 3 Test MSE is:", test.bag.mse.mtry3, "\n")
+
+#Use mtry = 5
+set.seed(1)
+bag.carseats.mtry5 <- randomForest(Sales ~ ., data = carseatsTrain, mtry = 5,importance = TRUE)
+
+train.predict.bag.mtry5 <- predict(bag.carseats.mtry5, newdata = carseatsTrain)
+train.bag.mse.mtry5<-mean((train.predict.bag.mtry5 - carseatsTrain$Sales)^2)
+cat("RandomForest mtry = 5 Training MSE is:", train.bag.mse.mtry5, "\n")
+
+test.predict.bag.mtry5 <- predict(bag.carseats.mtry5, newdata = carseatsTest)
+test.bag.mse.mtry5<-mean((test.predict.bag.mtry5 - carseatsTest$Sales)^2)
+cat("RandomForest  mtry = 5 Test MSE is:", test.bag.mse.mtry5, "\n")
+```
+
+The main difference between bagging and random forests is the choice of predictor subset size m. Here we use mtry = 3. The test set MSE is 4.361702;  This indicates that random forests (m < p) yielded an improvement over bagging  (m = p)in this case. In the case of regression trees, the node impurity is measured by the training RSS, and for classification trees by the deviance. Decorrelating trees using ensemble methods such as Bagging and Random Forest has proven to be an effective strategy compared to using individual decision trees. The Random Forest models, with different values of mtry, also outperform the unpruned and pruned trees.  The Random Forest with mtry=5 achieves even better results with a training MSE of 0.9264933 and a test MSE of 4.338632. Random Forests further enhance the performance by introducing additional randomness through feature selection and bagging.
+
+### (d)
+
+```{r Fit a boosted regression tree to the training set}
+#In boosting, unlike in bagging, the construction of each tree depends strongly on the trees that have already been grown
+set.seed(1)
+boost.carseat<-gbm(Sales~.,data=carseatsTrain,distribution="gaussian",n.trees=5000,interaction.depth=8)
+summary(boost.carseat)
+```
+
+```{r Use the boosted model to predict sales on the test set }
+#Use the boosted model to predict sales on the test set:
+yhat.carseat.train<-predict(boost.carseat,newdata=carseatsTrain,n.trees=5000)
+boosted.mse.train<-mean((yhat.carseat.train-carseatsTrain$Sales)^2)
+cat("Boosted model 5000 Training MSE is:", boosted.mse.train, "\n")
+
+yhat.carseat.test<-predict(boost.carseat,newdata=carseatsTest,n.trees=5000)
+boosted.mse.test<-mean((yhat.carseat.test-carseatsTest$Sales)^2)
+cat("Boosted model 5000 Test MSE is:", boosted.mse.test, "\n")
+```
+
+```{r Experiment with different tree depths, shrinkage parameters and the number of trees}
+set.seed(1)
+boost.carseat<-gbm(Sales~.,data=carseatsTrain,distribution="gaussian",n.trees=2000,interaction.depth=8)
+summary(boost.carseat)
+
+#Use the boosted model to predict sales on the test and training set:
+yhat.carseat.train<-predict(boost.carseat,newdata=carseatsTrain,n.trees=2000)
+boosted.mse.train<-mean((yhat.carseat.train-carseatsTrain$Sales)^2)
+cat("Boosted model 2000 Training MSE is:", boosted.mse.train, "\n")
+
+yhat.carseat.test<-predict(boost.carseat,newdata=carseatsTest,n.trees=2000)
+boosted.mse.test<-mean((yhat.carseat.test-carseatsTest$Sales)^2)
+cat("Boosted model 2000 Test MSE is:", boosted.mse.test, "\n")
+```
+
+```{r Experiment2 with different tree depths, shrinkage parameters and the number of trees}
+set.seed(1)
+boost.carseat<-gbm(Sales~.,data=carseatsTrain,distribution="gaussian",n.trees=5000,interaction.depth=6)
+summary(boost.carseat)
+
+
+#Use the boosted model to predict sales on the test set:
+yhat.carseat.train<-predict(boost.carseat,newdata=carseatsTrain,n.trees=5000)
+boosted.mse.train<-mean((yhat.carseat.train-carseatsTrain$Sales)^2)
+cat("Boosted model 5000 depth=6, Training MSE is:", boosted.mse.train, "\n")
+
+yhat.carseat.test<-predict(boost.carseat,newdata=carseatsTest,n.trees=5000)
+boosted.mse.test<-mean((yhat.carseat.test-carseatsTest$Sales)^2)
+cat("Boosted model 5000 depth=6, Test MSE is:", boosted.mse.test, "\n")
+```
+
+```{r What are the training MSEs for the best tree,Comment on the results}
+mse.depth <- vector(mode = "numeric")
+max.depth <- 10
+
+grid <- 10^seq(-10, 0, by = 0.05)
+
+mse.train <- vector(mode = "numeric")
+for (k in 1:length(grid)){
+  
+ boost.train<-gbm(Sales~.,data=carseatsTrain,distribution="gaussian",n.trees=2000,interaction.depth=8, shrinkage = grid[k])
+  yhat.boost<-predict(boost.train,newdata=carseatsTrain,n.trees=2000)
+                              
+  mse.train[k] <- mean((yhat.boost - carseatsTrain$Sales)^2)
+}
+plot(grid, mse.train, ylab = "Training MSE", xlab = "Shrinkage Values", 
+     type = "b")
+cat("So the smallest training MSE is:", min(mse.train)) 
+cat(", and that occurs when the shrinkage value is", grid[which.min(mse.train)], "\n") 
+```
+```{r What are the test MSEs for your best tree,Comment on the results}
+set.seed(1)
+mse.test <- vector(mode = "numeric")
+for (k in 1:length(grid)){
+  
+ boost.test<-gbm(Sales~.,data=carseatsTrain,distribution="gaussian",n.trees=2000,interaction.depth=8, shrinkage = grid[k])
+  yhat.boost<-predict(boost.test,newdata=carseatsTest,n.trees=2000)
+                              
+  mse.test[k] <- mean((yhat.boost - carseatsTest$Sales)^2)
+}
+plot(grid, mse.test, ylab = "Test MSE", xlab = "Shrinkage Values", type = "b")
+
+cat("So the smallest test MSE is:", min(mse.test)) 
+cat(", and that occurs when the shrinkage value is", grid[which.min(mse.test)], "\n") 
+```
+
+### (e) 
+
+To determine which model performed best, we need to compare the mean squared error (MSE) values obtained from each model.Based on the MSE values, the Boosted Regression Tree model performed the best, as it achieved the lowest test MSE of 3.795074. 
+
+```{r which predictors were the most important in randomForest model and Boosting}
+#Using the importance() function, we can view the importance of each importance() variable.
+importance(bag.carseats)
+#Plots of these importance measures
+varImpPlot(bag.carseats)
+
+summary(boost.carseat)
+#We see that Price and CompPrice are by far the most important variables.
+plot(boost.carseat , i = "Price")
+plot(boost.carseat , i = "CompPrice")
+
+```
+In randomForest:
+As we see the results, it looks like the price of the car seat is the most important predictor of how a car seat will sell.  Advertising, Competitor price, and Age also appear to have an effect, but all other variables seem to be less important.
+
+In Boosting:
+As we see the results, it looks like the price of the car seat and Competitor price are the most important predictors of how a car seat will sell.  Age,Population,Income and Advertising also appear to have an effect, but all other variables seem to be less important.
+These plots partial dependence plot illustrate the marginal effect of the selected variables on the response after integrating out the other variables. In this case, as we might expect, Sales are increasing with prices and decreasing with Competitor price.
+
+## Question 2.
+### (a) 
+
+```{r Read transation, fig.height=12, fig.width=12}
+#Read transactions
+basket.data <- read.transactions(file = "Basket.txt", format = "basket", sep = ",")
+inspect(basket.data)
+```
+
+1. we can mine the frequent itemsets, view all the frequent itemsets, and view the five most frequent itemsets with the greatest support using the following code:
+```{r Mine the frequent itemset}
+freqItemsets <- apriori(basket.data, parameter = list(support = 0.3, target = "frequent itemsets"))
+inspect(freqItemsets)
+inspect(sort(freqItemsets, by = "support")[1:13])
+itemFrequencyPlot(basket.data, support = 0.1, cex.names = 1)
+```
+
+2. We can mine the maximal frequent itemsets, and view all the maximal frequent itemsets using this code:
+```{r}
+maxFreqItemsets = apriori(basket.data,parameter = list(support = 0.3,target = "maximally frequent itemsets"))
+inspect(maxFreqItemsets)
+```
+
+3. We can mine the closed frequent itemsets, and view all the closed frequent itemsets using this code:
+```{r}
+closedFreqItemsets = apriori(basket.data,parameter = list(support = 0.3,target = "closed frequent itemsets"))
+inspect(closedFreqItemsets)
+```
+
+4. if the node is frequent, but not maximal nor closed:
+```{r Find not maximal nor closed}
+notMaximalNorClosed<-!(is.maximal(freqItemsets) |is.closed(freqItemsets))
+notMaximalNorClosed
+class(notMaximalNorClosed)
+
+# Find notMaximalNorClosed using setdiff function
+notMaximalNorClosed <- setdiff(freqItemsets, maxFreqItemsets)
+notMaximalNorClosed <- setdiff(freqItemsets, closedFreqItemsets)
+
+inspect(notMaximalNorClosed)
+```
+
+5.if the node is infrequent.
+```{r Find infrequent}
+# Mine all item sets
+allItemsets <- apriori(basket.data, parameter = list(support = 0, target = "frequent itemsets"))
+inspect(allItemsets)
+
+# Find infrequent itemsets
+infrequentItemsets <- setdiff(allItemsets, freqItemsets)
+
+# Inspect the infrequent itemsets
+inspect(infrequentItemsets)
+```
+### (b) 
+
+```{r Find the confidence and lift for the rules }
+rules = apriori(basket.data,parameter = list(minlen = 2, support = 0.3,confidence = 0.5,target = "rules"))
+inspect(rules)
+summary(rules)
+inspect(sort(rules, by = "confidence")[1:10])
+```
+As above, we can see that the rule {d, e} → {b} has a confidence of 0.6000000 and a lift of 0.7500000.Confidence measures the likelihood of the consequent (b) appearing in a transaction given the presence of the antecedent (d, e). 
+
+In this case, the confidence of 0.6000000 suggests that when both d and e are present in a transaction, there is a 60% chance that b will also be present.
+
+Lift indicates the strength of association between the antecedent and consequent, taking into account the expected frequency of the consequent. A lift of 0.7500000 implies that the presence of both d and e together increases the likelihood of b being present by 0.7500000 times compared to if they were independent. 
+
+This implies that while there is some association between {d, e} and {b}, the lift indicates that the presence of d and e together does not significantly increase the likelihood of b being present.
+
+## Question 3.
+### (a) 
+```{r Perform k-means clustering and Plot it}
+clustering.data <- read.csv("A3data2.csv")
+k <- 3
+kmeans.result <- kmeans(clustering.data[, c("x1", "x2")], centers = k)
+
+# Add cluster labels to the dataset
+clustering.data$Cluster <- as.factor(kmeans.result$cluster)
+
+# Plot the clustering
+ggplot(clustering.data, aes(x = x1, y = x2, color = Cluster)) +
+  geom_point() +
+  labs(title = "K-means Clustering (k = 3)", x = "x1", y = "x2") +
+  scale_color_discrete(name = "Cluster",labels = c("x1","x2","actual"))
+```
+
+### (b) 
+```{r hierarchical clustering,cluster the data, provide a dendrogram and plot the clustering }
+# Perform hierarchical clustering with complete linkage and Euclidean distance
+
+hc.complete <- hclust(dist(clustering.data[, c("x1", "x2")]), method = "complete")
+hc.average <- hclust(dist(clustering.data[, c("x1", "x2")]), method = "average")
+hc.single <- hclust(dist(clustering.data[, c("x1", "x2")]), method = "single")
+
+# Plot the dendrogram
+par(mfrow = c(1, 1))
+plot(hc.complete, main = "Complete Linkage")
+plot(hc.average,  main = "Average Linkage")
+plot(hc.single,   main = "Single Linkage")
+par(mfrow = c(1, 1))
+
+# Cut the dendrogram to obtain 3 clusters
+cutree.complete <- cutree(hc.complete, k = 3)
+
+#Plot the clustering with 3 clusters using Plot
+plot(clustering.data[, c("x1", "x2")], col =cutree.complete, main ="Complete Linkage Clustering (k = 3)")
+plot(clustering.data[, c("x1", "x2")], col = cutree(hc.average,3),main ="Average Linkage Clustering (k = 3)")
+plot(clustering.data[, c("x1", "x2")], col = cutree(hc.single,3),main ="Single Linkage Clustering (k = 3)")
+
+#Plot the clustering with 3 clusters using ggplot2
+clustered.data.complete <- data.frame(x1 = clustering.data$x1, x2 = clustering.data$x2, cluster = factor(cutree.complete))
+ggplot(clustered.data.complete, aes(x = x1, y = x2, color = cluster)) +
+  geom_point() +
+  labs(title = "Hierarchical Clustering (Complete Linkage, 3 Clusters)",
+       x = "x1", y = "x2") +
+  scale_color_discrete(name = "Cluster",labels = c("x1","x2","actual"))
+```
+
+```{r  Repeat using single linkage}
+# Cut the dendrogram to obtain 3 clusters
+cutree.single <- cutree(hc.single, k = 3)
+
+#Plot the clustering with 3 clusters using ggplot2
+clustered.data.single <- data.frame(x1 = clustering.data$x1, x2 = clustering.data$x2, cluster = factor(cutree.single))
+ggplot(clustered.data.single, aes(x = x1, y = x2, color = cluster)) +
+  geom_point() +
+  labs(title = "Hierarchical Clustering (Single Linkage, 3 Clusters)",
+       x = "x1", y = "x2") +
+  scale_color_discrete(name = "Cluster",labels = c("x1","x2","actual"))
+```
+### (c) 
+From the analyses above, we obtained almost the same clustering results using k-means and hierarchical clustering with complete and single linkage. The k-means clustering algorithm successfully separated the points into three distinct clusters, although there was some overlap between the clusters, particularly between clusters 1 and 2. 
+This may be due to the fact that k-means is sensitive to initial starting points and may get stuck in local optima, particularly if the clusters have different sizes or shapes.
+
+The clustering obtained using complete linkage resulted in three distinct clusters. The clusters appear to be well-separated and cohesive, with minimal overlap between them. This suggests that the complete linkage method was able to identify clear boundaries between the clusters based on the Euclidean distance. The clustering may indicate that there are distinct groups or subgroups in the data that exhibit similar patterns in the x1 and x2 variables.
+
+The clustering obtained using single linkage resulted in three clusters as well.The clusters are less distinct and exhibit more overlap compared to the complete linkage method. We can see complete linkage provided more distinct and well-separated clusters, while single linkage resulted in clusters with more overlap. 
+
+### (d) 
+```{r Rescale the data using the R function scale and repeat}
+#rescaled.data <- data[, c("x1", "x2")] |> mutate(across(everything(), scale))
+#rescaled.data
+# Rescale the data using scale()
+rescaled.data <- scale(clustering.data[, c("x1", "x2")], center = TRUE, scale = TRUE)
+rescaled.df<- as.data.frame(rescaled.data)
+# Perform k-means clustering
+k <- 3
+kmeans.result <- kmeans(rescaled.data, centers = k)
+
+# Add cluster labels to the dataset
+rescaled.df$Cluster <- as.factor(kmeans.result$cluster)
+
+# Plot the clustering using ggplot
+ggplot(rescaled.df, aes(x = x1, y = x2, color = Cluster)) +
+  geom_point() +
+  labs(title = "K-means Clustering (k = 3)", x = "x1", y = "x2") +
+  scale_color_discrete(name = "Cluster", labels = c("Cluster 1", "Cluster 2", "Cluster 3"))
+
+hc.complete <- hclust(dist(rescaled.data), method = "complete")
+hc.average <- hclust(dist(rescaled.data), method = "average")
+hc.single <- hclust(dist(rescaled.data), method = "single")
+
+# Plot the dendrogram
+par(mfrow = c(1, 1))
+plot(hc.complete, main = "Complete Linkage")
+plot(hc.average,  main = "Average Linkage")
+plot(hc.single,   main = "Single Linkage")
+par(mfrow = c(1, 1))
+
+# Cut the dendrogram to obtain 3 clusters
+cutree.complete <- cutree(hc.complete, k = 3)
+
+#Plot the clustering with 3 clusters using Plot
+plot(clustering.data[, c("x1", "x2")], col =cutree.complete, main ="Complete Linkage Clustering (k = 3)")
+plot(clustering.data[, c("x1", "x2")], col = cutree(hc.average,3),main ="Average Linkage Clustering (k = 3)")
+plot(clustering.data[, c("x1", "x2")], col = cutree(hc.single,3),main ="Single Linkage Clustering (k = 3)")
+
+#Plot the clustering with 3 clusters using ggplot2
+clustered.data.complete <- data.frame(x1 = clustering.data$x1, x2 = clustering.data$x2, cluster = factor(cutree.complete))
+ggplot(clustered.data.complete, aes(x = x1, y = x2, color = cluster)) +
+  geom_point() +
+  labs(title = "Hierarchical Clustering (Complete Linkage, 3 Clusters)",
+       x = "x1", y = "x2") +
+  scale_color_discrete(name = "Cluster",labels = c("x1","x2","actual"))
+
+# Cut the dendrogram to obtain 3 clusters
+cutree.single <- cutree(hc.single, k = 3)
+
+#Plot the clustering with 3 clusters using ggplot2
+clustered.data.single <- data.frame(x1 = clustering.data$x1, x2 = clustering.data$x2, cluster = factor(cutree.single))
+ggplot(clustered.data.single, aes(x = x1, y = x2, color = cluster)) +
+  geom_point() +
+  labs(title = "Hierarchical Clustering (Single Linkage, 3 Clusters)",
+       x = "x1", y = "x2") +
+  scale_color_discrete(name = "Cluster",labels = c("x1","x2","actual"))
+```
+
+By rescaling the data, we can observe that the clusters appear to be more compact and well-separated compared to the previous clustering results without rescaling. This indicates that rescaling has indeed improved the clustering results. 'center = TRUE', rescaling can improve the separation between clusters by adjusting the distances between data points. It helps in identifying more distinct clusters by effectively capturing the relationships between variables. 
+
+## Question 4.
+###  (a) 
+```{r Find a separating hyperplane}
+set.seed(1)
+# Load the training data
+train.data <- read.csv("BankTrain.csv")
+# Load the testing data
+test.data <- read.csv("BankTest.csv")
+
+#Encode the response as a factor variable
+train.data$y<- as.factor(train.data$y)
+test.data$y<- as.factor(test.data$y)
+
+# Fit a support vector machine with a linear kernel
+svmfit <- svm(y ~ x1 + x3, data = train.data, kernel = "linear",cost = 10,scale = FALSE)
+
+# Print the summary of the SVM fit
+summary(svmfit)
+
+ggplot(train.data, aes(x = x1, y = x3, color = y)) + geom_point()+
+    # Add the decision boundary
+  stat_function(fun = function(x1, x3) {
+    -svmfit$coefs[1]/svmfit$coefs[2] * x1 - svmfit$rho/svmfit$coefs[2]
+  }, aes(color = "Decision boundary"))
+
+plot(svmfit, train.data, x1  ~ x3)
+```
+
+Yes, it is possible to find a separating hyperplane for the training data using the SVM algorithm with a linear kernel and a cost parameter of 0.1.
+
+The SVM algorithm with a linear kernel tries to find a hyperplane that separates the two classes in the training data while maximizing the margin between them. The cost parameter controls the trade-off between maximizing the margin and minimizing the classification error. A smaller value of the cost parameter leads to a wider margin but may result in more misclassifications of the training data.
+
+In the given output, the SVM model was trained using the formula "y ~ x1 + x3" on the training data with a linear kernel, a cost parameter of 0.1, and scaling of the input variables (scale = TRUE). The output indicates that the number of support vectors for the model is 350, which means that the hyperplane is defined by a subset of the training data that lies closest to the decision boundary.
+
+The output also indicates that the model is a C-classification SVM, which means that it is a binary classifier that tries to assign each data point to one of two classes (0 or 1). The levels of the response variable are shown as "0" and "1". The SVM algorithm with a linear kernel and a cost parameter of 0.1 can be used to find a separating hyperplane for the training data. 
+
+### (b) 
+```{r Support vector classifier to the training data}
+set.seed (1)
+#Fit an SVC with a linear kernel using tune() to find the best cost value
+tune.out <- tune(svm, y ~ x1 + x3, data = train.data, kernel = "linear",
+                      ranges = list(cost = c(0.001 , 0.01, 0.1, 1, 5, 10, 100)))
+
+# Print the summary of the tuned SVC fit and
+summary(tune.out)
+```
+We see that cost = 0.1 results in the lowest cross-validation error rate. The
+tune() function stores the best model obtained, which can be accessed as
+follows:
+
+```{r predict and produce a confusion matrix using table funcion}
+bestmod <- tune.out$best.model
+summary(bestmod)
+
+# predict the class label on a set of test observations, at any given value of the cost parameter
+ypred <- predict(bestmod, newdata = test.data)
+# Create a confusion matrix for the testing data
+table(predict = ypred, truth = test.data$y)
+```
+Thus, with this value of cost, 362 of the test observations are correctly classified. What if we had instead used cost = 0.001
+```{r used cost 0.001 and produce a confusion matrix using table funcion}
+svmfit <- svm(y ~ x1 + x3, data = train.data, kernel = "linear",cost = 0.001,scale = FALSE)
+ypred <- predict(svmfit, newdata = test.data)
+table(predict = ypred, truth = test.data$y)
+plot(svmfit, train.data, x1  ~ x3)
+```
+
+
+### (c) 
+```{r Fit an SVM with a radial kernel using tune}
+# Fit an SVM with a radial kernel using tune() to find the best cost and gamma values
+tuned.svm.fit <- tune(svm, y ~ x1 + x3, data = train.data, kernel = "radial",
+                      ranges = list(cost = c(0.001 , 0.01, 0.1, 1, 5, 10, 100), gamma = c(0.001 , 0.01, 0.1, 1, 5, 10, 100)))
+
+# Print the summary of the tuned SVM fit
+summary(tuned.svm.fit)
+
+# Plot the best SVM
+plot(tuned.svm.fit)
+
+# Make predictions on the testing data using the tuned SVM fit
+svm.pred <- predict(tuned.svm.fit$best.model, newdata = test.data)
+
+# Create a confusion matrix for the testing data
+table(test.data$y, svm.pred)
+```
+Comparing the results of the linear SVM from part (b) with the radial SVM from this part, we can see that the radial SVM achieves a higher overall accuracy on the testing data, but also has a higher number of false positives (i.e., predicting a counterfeit banknote when it is actually genuine). The choice of kernel and tuning parameters will depend on the specific problem and the costs of different types of errors. In general, the radial kernel can be more flexible and capture more complex relationships between the predictors and the response, but may also be more prone to overfitting and harder to interpret.

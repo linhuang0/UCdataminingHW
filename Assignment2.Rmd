@@ -1,0 +1,254 @@
+---
+title: "STAT462_ASSIGNMENT2"
+author: 'By Lin Huang Student ID 23074062 '
+output:
+  html_document: default
+  pdf_document: default
+date: "2023-05-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(ggplot2) 
+library(tidyverse)
+library(MASS)
+library(caret)
+#library(InformationValue)
+library(mvnfast)
+```
+
+## Question 1.
+
+### (a) Perform code as below: 
+
+```{r Perform multiple logistic regression using the training data}
+setwd("~/")
+setwd("~/Desktop/DS /STAT462/Assignment 2 STAT462")
+# Read the training data
+train_data <- read.csv("BankTrain.csv")
+# Load the testing data
+test_data <- read.csv("BankTest.csv")
+
+# Fit the logistic regression model
+logit_mod <- glm(y ~ x1 + x2, data = train_data, family = binomial()) 
+
+coef(logit_mod)
+
+# Summarize the model
+summary(logit_mod)
+```
+
+Comment on the model obtained, and the logistic regression model obtained is:
+
+logit(p) = 0.59400 - 1.15591 x1 - 0.27014 x2
+
+Where p is the probability of a banknote being forged. The model has estimated coefficients for x1 and x2 of -1.15591 and -0.27014, respectively, with standard errors of 0.08034 and 0.02697. Both coefficients are statistically significant with p-values much smaller than 0.05, indicating strong evidence that they are non-zero.
+
+The null deviance of 1322.01 indicates that the model with only an intercept as predictor would predict 1322.01 observations as "0" (not forged) and 959-1322.01=362.99 observations as "1" (forged), using the training data. The residual deviance of 498.98 shows that the logistic regression model with x1 and x2 as predictors provides a significantly better fit than the null model. The AIC of 504.98 is relatively low, indicating a good balance between the goodness of fit and the complexity of the model.
+
+The deviance residuals range from -2.30493 to 2.62079, indicating that the model provides a good fit to the training data. However, we need to check the performance of the model on the test set before drawing any final conclusions about its predictive power.
+
+### (b) 
+#### i.
+```{r Plot training data and the decision boundary 0.5}
+
+# Get the predicted probabilities for each observation
+probs <- predict(logit_mod, type = "response")
+
+# Classify each observation based on the predicted probabilities
+classes <- ifelse(probs > 0.5, "Forged", "Genuine")
+
+# Plot the training data and decision boundary
+plot(x2 ~ x1, data = train_data, pch = ifelse(classes == "Forged", 4, 1),
+     xlab = "x1", ylab = "x2", main = "Training Data and Decision Boundary for θ = 0.5")
+abline(a = -logit_mod$coef[1] / logit_mod$coef[3], 
+       b = -logit_mod$coef[2] / logit_mod$coef[3], col = "red")
+legend("topright", legend = c("Genuine", "Forged"), pch = c(1, 4))
+
+```
+
+#### ii.
+```{r  compute the confusion matrix for the testing set θ 0.5}
+glimpse(test_data)
+# Get the predicted probabilities for each observation in the testing set
+test_probs <- predict(logit_mod, newdata = test_data, type = "response")
+
+# Classify each observation in the testing set based on the predicted probabilities
+test_classes_05 <- ifelse(test_probs > 0.5, "Forged", "Genuine")
+
+# Construct the confusion matrix
+conf_matrix_05 <- table(Predicted = test_classes_05, True = ifelse(test_data$y == 1, "Forged", "Genuine"))
+
+# Print the confusion matrix
+conf_matrix_05
+
+pred_glm = 1*(test_probs >= 0.5)
+mean( test_data$y == pred_glm )
+mean(test_data$y!= pred_glm)
+```
+
+Comment on the output:
+From the confusion matrix, we can see that the logistic regression model with θ = 0.5 correctly classified 365 out of 412 banknotes in the testing set, yielding an accuracy of 88.59%. There were 27 genuine banknotes that were incorrectly classified as forged (false positives) and 20 forged banknotes that were incorrectly classified as genuine (false negatives). Using only two predictors (x1 and x2) may limit the performance of the model compared to using all four predictors. The model seems to perform well overall, but the number of false positives and false negatives could be reduced by adjusting the threshold θ or using a different classification algorithm. 
+
+#### iii.
+
+```{r compute the confusion matrix for the testing set θ 0.3}
+# Get the predicted probabilities for each observation in the testing set
+test_probs <- predict(logit_mod, newdata = test_data, type = "response")
+
+# Classify each observation in the testing set based on the predicted probabilities
+test_classes_03 <- ifelse(test_probs > 0.3, "Forged", "Genuine")
+
+# Construct the confusion matrices
+conf_matrix_03 <- table(Predicted = test_classes_03, True = ifelse(test_data$y == 1, "Forged", "Genuine"))
+
+# Print the confusion matrices
+conf_matrix_03
+pred_glm = 1*(test_probs >= 0.3)
+mean( test_data$y == pred_glm )
+mean(test_data$y!= pred_glm)
+```
+
+Comment on the output and describe a situation when the θ = 0.3 model may be the preferred model:
+
+Based on the confusion matrix, it can be observed that the logistic regression model with θ = 0.3 classified more banknotes as forged compared to the previous θ values. The model correctly classified 356 out of 412 banknotes in the testing set, resulting in an accuracy of 86.4%. However, there were more false positives, with 36 genuine banknotes incorrectly classified as forged, while there were fewer false negatives, with only 20 forged banknotes incorrectly classified as genuine.
+
+The θ = 0.3 model may be the preferred choice in situations where the cost of missing a forged banknote (false negative) is significantly higher than classifying a genuine banknote as forged (false positive). In such scenarios, it may be more desirable to classify more banknotes as forged, even if it leads to more false positives, to ensure that all potential forgeries are identified. However, if the cost of false positives is higher than the cost of false negatives, it may be better to use a higher θ value to minimize the number of false positives.
+
+```{r compute the confusion matrix for the testing set θ 0.7}
+# Get the predicted probabilities for each observation in the testing set
+test_probs <- predict(logit_mod, newdata = test_data, type = "response")
+
+# Classify each observation in the testing set based on the predicted probabilities
+test_classes_07 <- ifelse(test_probs > 0.7, "Forged", "Genuine")
+
+# Construct the confusion matrices
+conf_matrix_07 <- table(Predicted = test_classes_07, True = ifelse(test_data$y == 1, "Forged", "Genuine"))
+
+# Print the confusion matrices
+conf_matrix_07
+pred_glm = 1*(test_probs >= 0.7)
+mean( test_data$y == pred_glm )
+mean(test_data$y!= pred_glm)
+```
+Comment on the output:
+Upon examining the confusion matrix, it can be seen that although their misjudgment rates are the same (because of the normal distribution), they are opposite in terms of specific data performance. It is apparent that the logistic regression model with θ = 0.7 classified a smaller number of banknotes as forged compared to the previous θ values. The model accurately classified 356 out of 412 banknotes in the testing set, giving an accuracy of 86.4%. There were fewer false positives, with only 13 genuine banknotes mistakenly classified as forged, but there were more false negatives, with 43 forged banknotes incorrectly classified as genuine.
+
+In situations where the cost of false positives (classifying a genuine banknote as forged) is significantly higher than the cost of false negatives (failing to detect a forged banknote), the θ = 0.7 model might be preferable. In such situations, reducing the number of false positives, even if it means increasing the number of false negatives, is preferable to avoid mistakenly rejecting authentic banknotes. However, if the cost of false negatives is lower than the cost of false positives, a lower θ value may be favored to detect as many forgeries as feasible.
+
+## Question 2.
+
+### (a) 
+```{r fit an LDA model to predict the probability of a banknote being forged using the predictors x1 and x2}
+# Fit an LDA model to predict the probability of a banknote being forged
+lda.fit <- lda(y ~ x1 + x2, data = train_data)
+#lda.fit
+#plot(lda.fit)
+
+# Get the predicted probabilities for each observation in the testing set
+test_probs <- predict(lda.fit, newdata = test_data)$posterior[, 1]
+
+# Classify each observation in the testing set based on the predicted probabilities
+test_classes <- ifelse(test_probs > 0.5, "Forged", "Genuine")
+
+# Construct the confusion matrix
+#conf_matrix <- table(Predicted = test_classes, True = ifelse(test_data$y == 1, "Forged", "Genuine"))
+#conf_matrix
+test_data$y_pred <- factor(test_classes, levels = c("Genuine", "Forged"))
+test_data$y_true <- factor(ifelse(test_data$y == 1, "Forged", "Genuine"), levels = c("Genuine", "Forged"))
+confusionMatrixdata <- confusionMatrix(data = test_data$y_pred, reference = test_data$y_true)
+confusionMatrixdata
+#calculate sensitivity
+sensitivity(test_data$y_pred,test_data$y_true)
+#calculate specificity
+specificity(test_data$y_pred,test_data$y_true)
+#find optimal cutoff probability to use to maximize accuracy
+#optimal <- optimalCutoff(test_data$y_pred,test_data$y_true)[1]
+#calculate total misclassification error rate
+#misClassError(test_data$y_pred,test_data$y_true,threshold=optimal)
+```
+
+### (b) 
+```{r fit an QDA model to predict the probability of a banknote being forged using the predictors x1 and x2}
+# Fit a QDA model using the training data
+qda.fit <- qda(y ~ x1 + x2, data = train_data)
+qda.fit
+
+# Get the predicted probabilities for each observation in the testing set
+test_probs <- predict(qda.fit, newdata = test_data)$posterior[, 1]
+
+# Classify each observation in the testing set based on the predicted probabilities
+test_classes <- ifelse(test_probs > 0.5, "Forged", "Genuine")
+
+# Construct the confusion matrix
+#conf_matrix <- table(Predicted = test_classes, True = ifelse(test_data$y == 1, "Forged", "Genuine"))
+test_data$y_pred <- factor(test_classes, levels = c("Genuine", "Forged"))
+test_data$y_true <- factor(ifelse(test_data$y == 1, "Forged", "Genuine"), levels = c("Genuine", "Forged"))
+confusionMatrixdata <- confusionMatrix(data = test_data$y_pred, reference = test_data$y_true)
+
+# Print the confusion matrix
+confusionMatrixdata
+
+prop.table(table( test_data$y_pred))
+```
+### (c) 
+The confusion matrix of the LDA and QDA models shows little difference in the results, but the misjudgment rate is too high. For example, LDA only has 50 correct judgments out of 412, which is only 12.14%, while QDA has only a 10.92% correct rate. Based on the confusion matrices from the three models, the logistic regression model with θ = 0.5 outperforms LDA and QDA in overall accuracy and the number of false positives and false negatives. The logistic regression model correctly classified 365 out of 412 banknotes in the testing set, with an accuracy of 88.6%. It had only 27 false positives and 20 false negatives. In comparison, LDA had 146 false positives and 216 false negatives, while QDA had 148 false positives and 219 false negatives.  So for this particular problem, the logistic regression model with θ = 0.5 is the recommended method.
+
+Reason: The logistic regression model with θ = 0.5 outperforms LDA and QDA in overall accuracy and the number of false positives and false negatives because it is able to find the optimal decision boundary that separates the two classes of banknotes based on the given predictors x1 and x2. In logistic regression, the decision boundary is determined by a threshold value, which in this case is set at 0.5. This means that any observation with a predicted probability greater than 0.5 is classified as a forged banknote, while any observation with a predicted probability less than or equal to 0.5 is classified as a genuine banknote. On the other hand, LDA and QDA assume that the predictors follow a Gaussian distribution, and they estimate the parameters of the distribution for each class to find the decision boundary. However, in this particular problem, the predictors do not follow a Gaussian distribution and there is no clear separation between the classes based on the predictors. This could explain the poor performance of LDA and QDA compared to the logistic regression model. Based on the performance metrics, the logistic regression model is recommended for predicting whether a banknote is genuine or forged.
+
+## Question 3.
+
+### (a) 
+To calculate the testing error rate for QDA, we need to find the QDA classification boundary for x, by solving f1(x) = f0(x).
+As we known 
+Class 0: X ∼ Normal(0,4)
+Class 1: X ∼ Normal(1,1)
+
+μ0 = 0 μ1 = 1 
+σ0²=4 σ1²=1  
+π0 = 0.5  
+π1 = 1 - π0 = 0.5 
+
+∵f(x) = (1 / sqrt(2π)σ) * exp[-(x - μ)^2 / (2σ^2)]
+f0(x) = (1/√(2π)4) * exp(-(x-0)²/(2*4)) = 1/4*sqrt(2π) * exp(-x²/8)
+f1(x) = (1/√(2π)1) * exp(-(x-1)²/(2*1²)) = (1/sqrt(2π)) * exp(-(x-1)²/2)
+∴
+f1(x) = f0(x) 
+1/4*sqrt(2π) * exp(-x²/8) - (1/sqrt(2π)) * exp(-(x-1)²/2)=0
+
+x ≈ -0.1965
+
+
+```{r }
+require(lattice)
+#
+set.seed(100)
+
+x = seq(-10, 10, 0.1)
+
+mean0 = 0
+mean1 = 1
+sigma0=2
+sigma1=1
+
+dat <- data.frame(x = x, y1 = dnorm(x, mean0, 2)*0.5, y2 = dnorm(x, mean1, 1)*0.5)
+p<-ggplot(dat, aes(x = x)) +
+  geom_line(aes(y = y1, colour = 'H0 is true'), size = 1.2) +
+  geom_line(aes(y = y2, colour = 'H1 is true'), size = 1.2) +
+  geom_area(aes(y = y1, x = ifelse(x > -0.2, x, NA)), fill = 'blue') +
+  geom_area(aes(y = y2, x = ifelse(x <= -0.2, x, NA)), fill = 'red', alpha = 0.3) +
+  xlab("") + ylab("") + theme(legend.title = element_blank()) +
+  scale_colour_manual(breaks = c("Class0 is true", "Class1 is true"), values = c("blue", "red"))
+p+geom_vline(xintercept = -0.2,size = 0.5,linetype = 8)
+
+#model <- qda()
+#boundary(model, x, class = "Species", main = "QDA")
+```
+
+P(Y=0|X=x) = 1 - P(Y=1|X=x)
+
+
+### (b) 

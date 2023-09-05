@@ -1,0 +1,186 @@
+---
+title: "STAT462_ASSIGNMENT1"
+author: 'By Lin Huang Student ID 23074062 '
+output:
+  pdf_document: default
+  html_document: default
+date: "2023-03-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(ggplot2) 
+library(tidyverse)
+library(class) 
+library(kknn)
+```
+
+## Question 1.
+
+### (a) Sketch the dataset.
+
+```{r plot Dataset}
+# Create Dataset
+df <- data.frame(x = c(3, 6, 12), y = c(2, 1, 6))
+#Plot Dataset
+p <-ggplot(df, aes(x, y)) + geom_point()+ggtitle("Dataset Plot") + xlab("x") + ylab("y")
+p
+```
+
+### (b) 
+
+```{r Compute βˆ 1 and βˆ 0 }
+#Compute beta0 and beta1
+x_m <- mean(df$x) 
+y_m <- mean(df$y) 
+beta1 <- sum((df$x - x_m) * (df$y - y_m)) / sum((df$x- x_m)^2) 
+beta0 <- y_m - beta1 *x_m 
+#Use cat function to print
+cat("beta1 = ", beta1, "\n")
+cat("beta0 = ", beta0, "\n")
+```
+
+### (c) 
+
+```{r plot linear model}
+#Set lm model
+model <- lm(y ~ x, data = df)
+x_seq <- seq(0, 15, by = 0.1)
+y_pred <- predict(model, data.frame(x = x_seq))
+#Plot model
+ggplot(df, aes(x,y)) +
+  geom_point() +
+  geom_line(data = data.frame(x = x_seq, y = y_pred), aes(x, y), color = "blue") +
+  labs(title = "Affine-Linear Regression",
+       x = "Predictor Variable (x)",
+       y = "Response Variable (y)")
+```
+
+### (d) 
+```{r training and test datasets}
+#Add the test point
+test_df <- data.frame(x = 8, y = 2)
+#Compute the MSE for f0
+f0_train <- rep(3,nrow(df)) 
+f0_test <- rep(3, nrow(test_df))
+train_mse_f0 <-  mean((f0_train - df$y)^2) 
+test_mse_f0 <- mean((f0_test - test_df$y)^2) 
+#Compute the MSE for f1
+f1_train <- beta0 + beta1 * df$x 
+f1_test <- beta0 + beta1 * test_df$x
+train_mse_f1 <- mean((f1_train- df$y)^2)
+test_mse_f1 <- mean((f1_test - test_df$y)^2)
+# Print 
+cat("Training-MSE for f0:", train_mse_f0, "\n")
+cat("Test-MSE for f0:", test_mse_f0, "\n")
+cat("Training-MSE for f1:", train_mse_f1, "\n")
+cat("Test-MSE for f1:", test_mse_f1, "\n")
+```
+
+The constant model (f0) has higher training and lower test MSE than the linear model (f1), indicating overfitting and poor generalization of f0, and underfitting of f1. However, despite its underfitting, f1 has a lower overall MSE and better captures the underlying trend in the data. Therefore, f1 is preferred over f0 for its potential to generalize well to new unseen data. More complex models may be explored to capture any non-linear relationship between x and y.
+
+## Question 2.
+### kNN function
+```{r kNN regression function}
+##kNN regression function
+kNN <- function(k,x.train,y.train,x.pred) {
+# 
+## This is kNN regression function for problems with
+## 1 predictor
+#
+## INPUTS
+#
+# k       = number of observations in nieghbourhood 
+# x.train = vector of training predictor values
+# y.train = vector of training response values
+# x.pred  = vector of predictor inputs with unknown
+#           response values 
+#
+## OUTPUT
+#
+# y.pred  = predicted response values for x.pred
+
+## Initialize:
+n.pred <- length(x.pred);		y.pred <- numeric(n.pred)
+
+## Main Loop
+for (i in 1:n.pred){
+  d <- abs(x.train - x.pred[i])
+  dstar = d[order(d)[k]]
+  y.pred[i] <- mean(y.train[d <= dstar])		
+}
+## Return the vector of predictions
+invisible(y.pred)
+}
+```
+### (a) 
+```{r Compute the training and testing MSE}
+# Load the AutoTrain.csv and AutoTest.csv data sets
+auto_train <- read.csv("AutoTrain.csv") 
+auto_test <- read.csv("AutoTest.csv") 
+# Set X and Y variables 
+train_xvals <- auto_train$weight 
+train_yvals <- auto_train$horsepower 
+test_xvals <- auto_test$weight 
+test_yvals <- auto_test$horsepower 
+kNN(2, train_xvals, train_yvals, test_xvals)
+# Perform kNN regression for k = 2, 5, 10, 20, 30, 50, and 100 
+ks <- c(2, 5, 10, 20, 30, 50, 100) 
+regr_train <- rep(0, length(ks)) 
+regr_test <- rep(0, length(ks)) 
+for (i in 1:length(ks)) { 
+  # compute train MSE for k:
+  y_train_pred <- kNN(ks[i], train_xvals, train_yvals, train_xvals) # predict response of train_xvals, when trained with (train_xvals,train_yvals)
+  regr_train[i] <- mean((y_train_pred - train_yvals)^2) # compute MSE by taking the mean of square errors
+  cat("The training MSE for k=", ks[i],"is ",  regr_train[i], "\n")
+  
+  # compute test MSE for k:
+  y_test_pred <- kNN(ks[i], train_xvals, train_yvals, test_xvals) # predict response of test_xvals, when trained with (train_xvals,train_yvals)
+  regr_test[i] <- mean((y_test_pred - test_yvals)^2) # compute MSE by taking the mean of square errors
+  cat("The test MSE for k=", ks[i],"is ", regr_test[i], "\n")
+} 
+```
+
+### (b) 
+```{r cbind }
+cbind(ks, regr_train, regr_test) 
+```
+Based on the computed MSE values for different values of k, we can see that k=20 has the lowest test MSE of 311.2487. This means that the kNN regression model with k=20 performed the best for predicting the horsepower based on the weight of the cars in the test data.
+
+
+### (c) 
+```{r Plot the training data, testing data and the best kNN model}
+# Find the best k value
+best_k <- ks[which.min(regr_test)]
+
+# Plot training data
+train_plot <- ggplot(auto_train, aes(x = weight, y = horsepower)) +
+  geom_point(color = "blue") +
+  labs(x = "Weight", y = "Horsepower") +
+  ggtitle("Training Data")
+train_plot
+# Plot testing data
+test_plot <- ggplot(auto_test, aes(x = weight, y = horsepower)) +
+  geom_point(color = "red") +
+  labs(x = "Weight", y = "Horsepower") +
+  ggtitle("Testing Data")
+test_plot
+# Plot training data, testing data and  best kNN model  in the same figure.
+model <- kknn(horsepower ~ weight, train = auto_train, test = auto_test, k = best_k)
+knn_data <- data.frame(weight = auto_train$weight, horsepower = model$fitted.values)
+knn_data <- knn_data[order(knn_data$weight), ]
+p <- ggplot() + geom_point(aes(x = weight, y = horsepower), data = auto_train, color = "blue", size = 1) +
+  geom_point(aes(x = weight, y = horsepower), data = auto_test, color = "red", size = 1) +
+  geom_point(aes(x = weight, y = horsepower), data = knn_data, color = "green", size = 1) +
+  ggtitle(paste0("Auto Data Set with k = ", best_k, " kNN Model")) +
+  labs(x = "Weight", y = "Horsepower")
+
+# Print the plot
+print(p)
+```
+
+### (d) 
+The kNN regression model has a trade-off between bias and variance. As we increase the value of k, the model becomes less flexible and has a higher bias but lower variance. On the other hand, when k is small, the model is more flexible and has a lower bias but higher variance. A common approach is to use cross-validation to estimate the test error for different values of k and choose the value that minimizes the test error.
